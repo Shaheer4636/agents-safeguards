@@ -33,6 +33,19 @@ Spotlighting made GPT-5.4-mini worse, not better. Without any defense, 8 out of 
 Repeat User Prompt was the only defense that consistently helped, and it improved utility more than security. On GPT-5.4-mini it raised task completion from 45% to 70%, most likely by keeping the model anchored to the original request.
 
 Most of the blocking that did happen on GPT-5.4-mini and Grok came from Azure's own content filter rejecting jailbreak style payloads, not from the models recognizing and refusing the injection themselves.
+ 
+## Compute Environment
+ 
+Benchmarks were run from an Azure NC24ads A100 v4 virtual machine, the GPU was not used for this work since both AgentDojo and the models under test run as remote API calls rather than local inference.
+ 
+| Spec | Value |
+|---|---|
+| GPU | 1x NVIDIA A100 |
+| vCPUs | 24 |
+| RAM | 220 GB |
+| Local NVMe (temporary) | 894 GB |
+| Max data disks | 8 |
+| Max uncached disk IOPS | 30000 |
 
 ## Problems We Faced
 
