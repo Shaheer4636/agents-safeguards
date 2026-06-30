@@ -112,8 +112,8 @@ If you use this work, please cite both AgentDojo and this evaluation.
 
 @misc{asif2026evaluation,
   title={Evaluation of Frontier Models Against AgentDojo},
-  author={Sadia Asif},
-  institution={Rensselaer Polytechnic Institute},
+  author={M Shaheer, Sadia Asif},
+  institution={Pakistan Institute of Engineering and Applied Sciences, Rensselaer Polytechnic Institute},
   year={2026}
 }
 ```
