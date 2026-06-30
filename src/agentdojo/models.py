@@ -3,8 +3,19 @@ from agentdojo.strenum import StrEnum
 
 class ModelsEnum(StrEnum):
     """Currently supported models."""
-
     GPT_4O_2024_05_13 = "gpt-4o-2024-05-13"
+    GPT_5_4_MINI = "gpt-5.4-mini-2026-03-17"
+    """GPT-5.4 Mini — Azure Foundry"""
+    CLAUDE_SONNET_4_6 = "claude-sonnet-4-6"
+    """Claude Sonnet 4.6 — Azure Foundry"""
+    DEEPSEEK_V3_2 = "DeepSeek-V3.2"
+    """DeepSeek V3.2 — Azure Foundry"""
+    GROK_4 = "grok-4-20-non-reasoning"
+    """Grok 4 — Azure Foundry"""
+    GPT_4_1_MINI = "gpt-4.1-mini-2025-04-14"
+    """GPT-4.1 Mini — Azure Foundry"""
+    GPT_5_5 = "gpt-5.5-2026-04-24"
+    """GPT-5.5 — Azure Foundry"""
     """GPT-4o"""
     GPT_4O_MINI_2024_07_18 = "gpt-4o-mini-2024-07-18"
     """GPT-4o Mini"""
@@ -57,6 +68,10 @@ class ModelsEnum(StrEnum):
     VLLM_PARSED = "vllm_parsed"
     """VLLM parsed model"""
     OPENAI_COMPATIBLE = "openai-compatible"
+    CLAUDE_OPUS_4_8 = "claude-opus-4-8"
+    GROK_4_3 = "grok-4.3"
+    """Grok 4.3 — Azure Foundry"""
+    """Claude Opus 4.8 — Azure Foundry"""
     """OpenAI-compatible endpoint (set OPENAI_COMPATIBLE_BASE_URL and OPENAI_COMPATIBLE_API_KEY)"""
 
 
@@ -88,6 +103,14 @@ MODEL_PROVIDERS = {
     ModelsEnum.LOCAL: "local",
     ModelsEnum.VLLM_PARSED: "vllm_parsed",
     ModelsEnum.OPENAI_COMPATIBLE: "openai-compatible",
+    ModelsEnum.CLAUDE_OPUS_4_8: "anthropic",
+    ModelsEnum.GROK_4_3: "openai-compatible",
+    ModelsEnum.GPT_5_4_MINI:    "openai-compatible",
+    ModelsEnum.CLAUDE_SONNET_4_6: "openai-compatible",
+    ModelsEnum.DEEPSEEK_V3_2:   "openai-compatible",
+    ModelsEnum.GROK_4:          "openai-compatible",
+    ModelsEnum.GPT_4_1_MINI:    "openai-compatible",
+    ModelsEnum.GPT_5_5:         "openai-compatible",
 }
 
 
@@ -119,4 +142,12 @@ MODEL_NAMES = {
     "local": "Local model",
     "vllm_parsed": "Local model",
     "openai-compatible": "AI assistant",
+    "claude-opus-4-8": "Claude",
+    "grok-4.3": "Grok",
+    "gpt-5.4-mini-2026-03-17":     "GPT-5.4-mini",
+    "claude-sonnet-4-6":            "Claude Sonnet 4.6",
+    "DeepSeek-V3.2":               "DeepSeek",
+    "grok-4-20-non-reasoning":      "Grok 4",
+    "gpt-4.1-mini-2025-04-14":     "GPT-4.1-mini",
+    "gpt-5.5-2026-04-24":          "GPT-5.5",
 }

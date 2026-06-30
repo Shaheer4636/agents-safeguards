@@ -13,7 +13,7 @@ from typing_extensions import Self, TypedDict
 from agentdojo.agent_pipeline.base_pipeline_element import BasePipelineElement
 from agentdojo.attacks.base_attacks import BaseAttack
 from agentdojo.base_tasks import BaseInjectionTask, BaseUserTask
-from agentdojo.functions_runtime import Env
+from agentdojo.functions_runtime import Env, FunctionCall, FunctionCall
 from agentdojo.logging import Logger, TraceLogger
 from agentdojo.task_suite.load_suites import get_suite
 from agentdojo.task_suite.task_suite import TaskSuite
@@ -379,6 +379,8 @@ class TaskResults(BaseModel):
             raise ValueError("TaskResults must have at least two messages.")
         return self
 
+
+TaskResults.model_rebuild()
 
 def convert_old_messages_format(messages: list[dict]) -> list[dict]:
     """Convert messages from old format (string content) to new format (content blocks).

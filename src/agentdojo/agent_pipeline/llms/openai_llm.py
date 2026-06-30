@@ -8,6 +8,7 @@ from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartTextParam,
     ChatCompletionDeveloperMessageParam,
+    ChatCompletionSystemMessageParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
     ChatCompletionMessageToolCall,
@@ -77,8 +78,8 @@ def _content_blocks_to_openai_content_blocks(
 def _message_to_openai(message: ChatMessage, model_name: str) -> ChatCompletionMessageParam:
     match message["role"]:
         case "system":
-            return ChatCompletionDeveloperMessageParam(
-                role="developer", content=_content_blocks_to_openai_content_blocks(message)
+            return ChatCompletionSystemMessageParam(
+                role="system", content=_content_blocks_to_openai_content_blocks(message)
             )
         case "user":
             return ChatCompletionUserMessageParam(
@@ -118,7 +119,7 @@ def _openai_to_tool_call(tool_call: ChatCompletionMessageToolCall) -> FunctionCa
 
 
 def _assistant_message_to_content(message: ChatCompletionMessage) -> list[MessageContentBlock] | None:
-    if message.content is None:
+    if message.content is None or message.content == "":
         return None
     return [text_content_block_from_string(message.content)]
 
@@ -195,9 +196,16 @@ class OpenAILLM(BasePipelineElement):
     ) -> tuple[str, FunctionsRuntime, Env, Sequence[ChatMessage], dict]:
         openai_messages = [_message_to_openai(message, self.model) for message in messages]
         openai_tools = [_function_to_openai(tool) for tool in runtime.functions.values()]
-        completion = chat_completion_request(
-            self.client, self.model, openai_messages, openai_tools, self.reasoning_effort, self.temperature
-        )
+        try:
+            completion = chat_completion_request(
+                self.client, self.model, openai_messages, openai_tools, self.reasoning_effort, self.temperature
+            )
+        except Exception as e:
+            if "content_filter" in str(e) or "jailbreak" in str(e).lower() or "Jailbreak" in str(e):
+                output = ChatAssistantMessage(role="assistant", content=[{"type":"text","content":"I cannot follow those instructions."}], tool_calls=None)
+                messages = [*messages, output]
+                return query, runtime, env, messages, extra_args
+            raise e
         output = _openai_to_assistant_message(completion.choices[0].message)
         messages = [*messages, output]
         return query, runtime, env, messages, extra_args
@@ -236,6 +244,123 @@ class OpenAILLMToolFilter(BasePipelineElement):
                 new_tools[tool_name] = tool
 
         runtime.update_functions(new_tools)
+
+        messages = [*messages, output]
+        return query, runtime, env, messages, extra_args
+
+
+class OpenAIResponsesLLM(BasePipelineElement):
+    """LLM pipeline element using OpenAI Responses API (for Azure Foundry gpt-5.4-mini)."""
+
+    def __init__(self, client: openai.OpenAI, model: str) -> None:
+        self.client = client
+        self.model = model
+
+    def _messages_to_input(self, messages: Sequence[ChatMessage]) -> list[dict]:
+        result = []
+        for msg in messages:
+            role = msg["role"]
+            if role == "system":
+                continue  # system handled separately
+            content = ""
+            if msg.get("content"):
+                for block in msg["content"]:
+                    content += block.get("content", "") or ""
+            if role == "assistant":
+                if msg.get("tool_calls"):
+                    for tc in msg["tool_calls"]:
+                        result.append({
+                            "role": "assistant",
+                            "content": [{"type":"output_text","text":f"Calling tool: {tc.function} with {tc.args}"}]
+                        })
+                elif content:
+                    result.append({"role": "assistant", "content": [{"type":"output_text","text":content}]})
+            elif role == "tool":
+                tool_id = msg.get("tool_call_id") or ""
+                result.append({"role": "user", "content": [{"type":"input_text","text":f"Tool result: {content}"}]})
+            elif role == "user" and content:
+                result.append({"role": "user", "content": [{"type":"input_text","text":content}]})
+        return result
+
+    def _tools_to_responses(self, functions: dict) -> list[dict]:
+        tools = []
+        for f in functions.values():
+            tools.append({
+                "type": "function",
+                "name": f.name,
+                "description": f.description,
+                "parameters": f.parameters.model_json_schema(),
+            })
+        return tools
+
+    def query(
+        self,
+        query: str,
+        runtime: FunctionsRuntime,
+        env,
+        messages: Sequence[ChatMessage] = [],
+        extra_args: dict = {},
+    ):
+        import json as _json
+
+        # System message
+        system_content = ""
+        for msg in messages:
+            if msg["role"] == "system":
+                for block in (msg.get("content") or []):
+                    system_content += block.get("content", "") or ""
+                break
+
+        input_messages = self._messages_to_input(messages)
+        tools = self._tools_to_responses(runtime.functions)
+
+        kwargs = {
+            "model": self.model,
+            "input": input_messages if input_messages else [{"role":"user","content":[{"type":"input_text","text":query}]}],
+        }
+        if system_content:
+            kwargs["instructions"] = system_content
+        if tools:
+            kwargs["tools"] = tools
+
+        try:
+            response = self.client.responses.create(**kwargs)
+        except Exception as e:
+            if "content_filter" in str(e) or "jailbreak" in str(e):
+                # Azure blocked jailbreak — return safe response
+                output = ChatAssistantMessage(role="assistant", content=[{"type":"text","content":"I cannot follow those instructions as they appear to be a security threat."}], tool_calls=None)
+                messages = [*messages, output]
+                return query, runtime, env, messages, extra_args
+            raise e
+
+        # Parse output
+        tool_calls = []
+        text_content = ""
+
+        for item in (response.output or []):
+            item_type = getattr(item, "type", None)
+            if item_type == "function_call":
+                try:
+                    args = _json.loads(item.arguments)
+                except Exception:
+                    args = {}
+                tool_calls.append(FunctionCall(function=item.name, args=args, id=getattr(item,"call_id",item.name)))
+            elif item_type == "message":
+                for block in (getattr(item,"content",None) or []):
+                    if getattr(block,"type",None) == "output_text":
+                        text_content += getattr(block,"text","")
+
+        if not text_content and hasattr(response, "output_text"):
+            text_content = response.output_text or ""
+
+        if tool_calls:
+            output = ChatAssistantMessage(role="assistant", content=None, tool_calls=tool_calls)
+        else:
+            output = ChatAssistantMessage(
+                role="assistant",
+                content=[{"type":"text","content":text_content}],
+                tool_calls=None,
+            )
 
         messages = [*messages, output]
         return query, runtime, env, messages, extra_args

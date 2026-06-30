@@ -21,7 +21,7 @@ from agentdojo.agent_pipeline.llms.anthropic_llm import AnthropicLLM
 from agentdojo.agent_pipeline.llms.cohere_llm import CohereLLM
 from agentdojo.agent_pipeline.llms.google_llm import GoogleLLM
 from agentdojo.agent_pipeline.llms.local_llm import LocalLLM
-from agentdojo.agent_pipeline.llms.openai_llm import OpenAILLM, OpenAILLMToolFilter
+from agentdojo.agent_pipeline.llms.openai_llm import OpenAILLM, OpenAILLMToolFilter, OpenAIResponsesLLM
 from agentdojo.agent_pipeline.llms.prompting_llm import PromptingLLM
 from agentdojo.agent_pipeline.pi_detector import TransformersBasedPIDetector
 from agentdojo.agent_pipeline.tool_execution import (
@@ -71,8 +71,14 @@ def get_llm(provider: str, model: str, model_id: str | None, tool_delimiter: str
     if provider == "openai":
         client = openai.OpenAI()
         llm = OpenAILLM(client, model)
+        llm = OpenAILLM(client, model)
     elif provider == "anthropic":
-        client = anthropic.Anthropic()
+        base_url = os.getenv("ANTHROPIC_COMPATIBLE_BASE_URL")
+        api_key = os.getenv("ANTHROPIC_COMPATIBLE_API_KEY") or os.getenv("OPENAI_COMPATIBLE_API_KEY")
+        if base_url and api_key:
+            client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
+        else:
+            client = anthropic.Anthropic()
         if "-thinking-" in model:
             elements = model.split("-thinking-")
             if len(elements) != 2:
@@ -127,13 +133,15 @@ def get_llm(provider: str, model: str, model_id: str | None, tool_delimiter: str
             raise ValueError("OPENAI_COMPATIBLE_BASE_URL environment variable is required for openai-compatible provider")
         if not api_key:
             raise ValueError("OPENAI_COMPATIBLE_API_KEY environment variable is required for openai-compatible provider")
-        if model_id is None:
-            raise ValueError("--model-id is required for openai-compatible provider")
-        client = openai.OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-        )
-        llm = OpenAILLM(client, model_id)
+        actual_model = model_id if model_id else model
+        if not base_url.endswith("/"):
+            base_url = base_url + "/"
+        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        # grok uses chat completions, others use responses api
+        if "grok" in actual_model.lower():
+            llm = OpenAILLM(client, actual_model)
+        else:
+            llm = OpenAIResponsesLLM(client, actual_model)
     else:
         raise ValueError("Invalid provider")
     return llm
@@ -222,6 +230,7 @@ class AgentPipeline(BasePipelineElement):
             tools_loop = ToolsExecutionLoop([ToolsExecutor(tool_output_formatter), llm])
             if not isinstance(llm, OpenAILLM):
                 raise ValueError("Tool filter is only supported for OpenAI models")
+            # openai-compatible ke liye same client reuse karo
             if llm_name is None:
                 raise ValueError("Tool filter is only supported for models with a name")
             pipeline = cls(
@@ -272,6 +281,16 @@ class AgentPipeline(BasePipelineElement):
                 "between those symbols."
             )
             delimited_tool_output_formatter = lambda result: f"<<{tool_output_formatter(result)}>>"
+            # Re-create llm with correct model_id for openai-compatible
+            actual_model = config.model_id if config.model_id else config.llm
+            if MODEL_PROVIDERS.get(ModelsEnum(config.llm)) == "openai-compatible":
+                import openai as _openai
+                _client = _openai.OpenAI(
+                    api_key=__import__("os").getenv("OPENAI_COMPATIBLE_API_KEY"),
+                    base_url=__import__("os").getenv("OPENAI_COMPATIBLE_BASE_URL"),
+                )
+                from agentdojo.agent_pipeline.llms.openai_llm import OpenAILLM as _OpenAILLM
+                llm = _OpenAILLM(_client, actual_model)
             tools_loop = ToolsExecutionLoop([ToolsExecutor(tool_output_formatter=delimited_tool_output_formatter), llm])
             pipeline = cls([system_message_component, init_query_component, llm, tools_loop])
             pipeline.name = f"{llm_name}-{config.defense}"
