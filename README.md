@@ -123,9 +123,9 @@ If you use this work, please cite both AgentDojo and this evaluation.
   year={2024}
 }
 
-@misc{asif2026evaluation,
+@misc{shaheer2026evaluation,
   title={Evaluation of Frontier Models Against AgentDojo},
-  author={M Shaheer, Sadia Asif},
+  author={Shaheer, M. and Asif, Sadia},
   institution={Pakistan Institute of Engineering and Applied Sciences, Rensselaer Polytechnic Institute},
   year={2026}
 }
